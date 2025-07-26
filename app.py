@@ -45,7 +45,7 @@ def calculate_distance_and_flag(row, odp_df, lat_col, lon_col, sto_col=None):
     # Tentukan status rekomendasi
     if best_odp is not None:
         result['STATUS_REKOMENDASI'] = 'ODP Tersedia'
-        result['KETERANGAN'] = f"ODP {best_odp['ODP_NAME']} (Avail: {best_odp['AVAI']})"
+        result['KETERANGAN'] = f"ODP {best_odp['ODP_NAME']} (Avail: {best_odp['AVAI']}, Jarak: {round(min_distance,2)}m)"
     elif has_odp_in_range:
         result['STATUS_REKOMENDASI'] = 'Potensi PT2/PT3'
         result['KETERANGAN'] = "Ada ODP dalam radius 200m tetapi tidak memenuhi kriteria"
@@ -170,17 +170,26 @@ def main():
                 final_df = pd.concat([pelanggan_df, pd.DataFrame(results)], axis=1)
                 
                 # Hitung statistik
+                odp_tersedia = final_df[final_df['STATUS_REKOMENDASI'] == 'ODP Tersedia']
+                potensi_pt2 = final_df[final_df['STATUS_REKOMENDASI'] == 'Potensi PT2/PT3']
+                tidak_ada = final_df[final_df['STATUS_REKOMENDASI'] == 'Tidak Ada ODP']
+                
                 stat_df = pd.DataFrame({
                     'Kategori': ['ODP Tersedia', 'Potensi PT2/PT3', 'Tidak Ada ODP'],
                     'Jumlah': [
-                        len(final_df[final_df['STATUS_REKOMENDASI'] == 'ODP Tersedia']),
-                        len(final_df[final_df['STATUS_REKOMENDASI'] == 'Potensi PT2/PT3']),
-                        len(final_df[final_df['STATUS_REKOMENDASI'] == 'Tidak Ada ODP'])
+                        len(odp_tersedia),
+                        len(potensi_pt2),
+                        len(tidak_ada)
                     ],
                     'Persentase': [
-                        f"{(len(final_df[final_df['STATUS_REKOMENDASI'] == 'ODP Tersedia']) / total_pelanggan * 100:.1f}%",
-                        f"{(len(final_df[final_df['STATUS_REKOMENDASI'] == 'Potensi PT2/PT3']) / total_pelanggan * 100:.1f}%",
-                        f"{(len(final_df[final_df['STATUS_REKOMENDASI'] == 'Tidak Ada ODP']) / total_pelanggan * 100:.1f}%"
+                        f"{(len(odp_tersedia) / total_pelanggan * 100:.1f}%",
+                        f"{(len(potensi_pt2) / total_pelanggan * 100:.1f}%",
+                        f"{(len(tidak_ada) / total_pelanggan * 100:.1f}%"
+                    ],
+                    'Contoh ODP': [
+                        ", ".join(odp_tersedia['ODP_TERDEKAT'].dropna().unique()[:3]) if len(odp_tersedia) > 0 else "-",
+                        "-",
+                        "-"
                     ]
                 })
                 
@@ -194,18 +203,26 @@ def main():
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("ODP Tersedia", 
-                            stat_df[stat_df['Kategori'] == 'ODP Tersedia']['Jumlah'].values[0],
-                            stat_df[stat_df['Kategori'] == 'ODP Tersedia']['Persentase'].values[0])
+                            stat_df.loc[0, 'Jumlah'],
+                            stat_df.loc[0, 'Persentase'])
                 with col2:
                     st.metric("Potensi PT2/PT3", 
-                            stat_df[stat_df['Kategori'] == 'Potensi PT2/PT3']['Jumlah'].values[0],
-                            stat_df[stat_df['Kategori'] == 'Potensi PT2/PT3']['Persentase'].values[0])
+                            stat_df.loc[1, 'Jumlah'],
+                            stat_df.loc[1, 'Persentase'])
                 with col3:
                     st.metric("Tidak Ada ODP", 
-                            stat_df[stat_df['Kategori'] == 'Tidak Ada ODP']['Jumlah'].values[0],
-                            stat_df[stat_df['Kategori'] == 'Tidak Ada ODP']['Persentase'].values[0])
+                            stat_df.loc[2, 'Jumlah'],
+                            stat_df.loc[2, 'Persentase'])
                 
-                # Tampilkan hasil
+                st.write("**Detail Statistik:**")
+                st.dataframe(stat_df)
+                
+                # Tampilkan contoh ODP yang direkomendasikan
+                if len(odp_tersedia) > 0:
+                    st.write("**Contoh ODP yang Direkomendasikan:**")
+                    st.write(", ".join(odp_tersedia['ODP_TERDEKAT'].dropna().unique()[:10]))
+                
+                # Tampilkan hasil lengkap
                 st.subheader("📋 Detail Rekomendasi")
                 st.dataframe(final_df)
                 
