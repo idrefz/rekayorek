@@ -2,9 +2,8 @@ import streamlit as st
 import pandas as pd
 from geopy.distance import geodesic
 from io import BytesIO
-import pydeck as pdk
 
-st.set_page_config(page_title="Rekomendasi ODP dengan Flagging PT2/PT3", layout="wide")
+st.set_page_config(page_title="Rekomendasi ODP Sederhana", layout="wide")
 
 def calculate_distance_and_flag(row, odp_df, lat_col, lon_col):
     """Menghitung jarak terdekat dan menentukan flagging"""
@@ -22,7 +21,7 @@ def calculate_distance_and_flag(row, odp_df, lat_col, lon_col):
         if distance <= 200:
             has_odp_in_range = True
             # Prioritaskan ODP dengan avail >= 6
-            if odp_row['AVAI'] >= 6 and distance < min_distance:
+            if odp_row['AVAI'] >= 3 and distance < min_distance:
                 min_distance = distance
                 best_odp = odp_row
     
@@ -30,11 +29,8 @@ def calculate_distance_and_flag(row, odp_df, lat_col, lon_col):
     result = {
         'ODP_TERDEKAT': best_odp['ODP_NAME'] if best_odp is not None else None,
         'JARAK_METER': round(min_distance, 2) if best_odp is not None else None,
-        'ODP_LAT': best_odp['LATITUDE'] if best_odp is not None else None,
-        'ODP_LON': best_odp['LONGITUDE'] if best_odp is not None else None,
         'ODP_AVAI': best_odp['AVAI'] if best_odp is not None else None,
         'ODP_USED': best_odp['USED'] if best_odp is not None else None,
-        'ODP_IS_TOTAL': best_odp['IS_TOTAL'] if best_odp is not None else None,
         'STATUS_REKOMENDASI': None,
         'KETERANGAN': None
     }
@@ -53,15 +49,15 @@ def calculate_distance_and_flag(row, odp_df, lat_col, lon_col):
     return pd.Series(result)
 
 def main():
-    st.title("Rekomendasi ODP dengan Flagging Potensi PT2/PT3")
+    st.title("Rekomendasi ODP Tanpa Peta")
     st.write("""
-    Aplikasi ini akan menganalisis data pelanggan dan ODP untuk memberikan rekomendasi ODP terdekat 
+    Aplikasi ini menganalisis data pelanggan dan ODP untuk memberikan rekomendasi ODP terdekat 
     dalam radius 200 meter dengan avail minimal 6, serta menandai area yang membutuhkan PT2/PT3.
     """)
     
     # Upload data ODP
     st.subheader("1. Upload Data ODP")
-    st.write("Pastikan file mengandung kolom: ODP_NAME, LATITUDE, LONGITUDE, IS_TOTAL, AVAI, USED")
+    st.write("Pastikan file mengandung kolom: ODP_NAME, LATITUDE, LONGITUDE, AVAI, USED")
     odp_file = st.file_uploader("Pilih file Excel/CSV data ODP", type=['xlsx', 'xls', 'csv'], key="odp_uploader")
     
     odp_df = None
@@ -73,7 +69,7 @@ def main():
                 odp_df = pd.read_excel(odp_file)
             
             # Validasi kolom penting
-            required_cols = ['ODP_NAME', 'LATITUDE', 'LONGITUDE', 'IS_TOTAL', 'AVAI', 'USED']
+            required_cols = ['ODP_NAME', 'LATITUDE', 'LONGITUDE', 'AVAI', 'USED']
             missing_cols = [col for col in required_cols if col not in odp_df.columns]
             
             if missing_cols:
@@ -94,48 +90,6 @@ def main():
                 
                 # Tampilkan preview data
                 st.dataframe(odp_df[required_cols].head())
-                
-                # Tampilkan peta ODP
-                try:
-                    st.write("**Peta Distribusi ODP:**")
-                    st.pydeck_chart(pdk.Deck(
-                        map_style='mapbox://styles/mapbox/light-v9',
-                        initial_view_state=pdk.ViewState(
-                            latitude=odp_df['LATITUDE'].mean(),
-                            longitude=odp_df['LONGITUDE'].mean(),
-                            zoom=11,
-                            pitch=50,
-                        ),
-                        layers=[
-                            pdk.Layer(
-                                'ScatterplotLayer',
-                                data=odp_df,
-                                get_position='[LONGITUDE, LATITUDE]',
-                                get_color='[200, 30, 0, 160]',
-                                get_radius=100,
-                                pickable=True
-                            ),
-                            pdk.Layer(
-                                'ScatterplotLayer',
-                                data=odp_df[odp_df['AVAI'] >= 6],
-                                get_position='[LONGITUDE, LATITUDE]',
-                                get_color='[0, 200, 30, 160]',
-                                get_radius=100,
-                                pickable=True
-                            )
-                        ],
-                        tooltip={
-                            "html": "<b>ODP:</b> {ODP_NAME}<br/>"
-                                   "<b>Avail:</b> {AVAI}<br/>"
-                                   "<b>Used:</b> {USED}",
-                            "style": {
-                                "backgroundColor": "steelblue",
-                                "color": "white"
-                            }
-                        }
-                    ))
-                except Exception as e:
-                    st.warning(f"Tidak dapat menampilkan peta ODP: {str(e)}")
         except Exception as e:
             st.error(f"Error membaca data ODP: {str(e)}")
     
@@ -170,16 +124,6 @@ def main():
             pelanggan_df = pelanggan_df.dropna(subset=[lat_col, lon_col])
             
             st.dataframe(pelanggan_df.head())
-            
-            # Tampilkan peta pelanggan
-            try:
-                st.write("**Peta Distribusi Pelanggan:**")
-                st.map(pelanggan_df.rename(columns={
-                    lat_col: 'lat',
-                    lon_col: 'lon'
-                }))
-            except:
-                st.warning("Tidak dapat menampilkan peta pelanggan")
         except Exception as e:
             st.error(f"Error membaca data pelanggan: {str(e)}")
     
@@ -220,79 +164,17 @@ def main():
                 # Tampilkan hasil
                 st.dataframe(final_df)
                 
-                # Buat peta interaktif
-                try:
-                    st.write("**Peta Rekomendasi:**")
-                    
-                    # Siapkan data untuk peta
-                    map_df = final_df.copy()
-                    map_df['lat'] = map_df[lat_col]
-                    map_df['lon'] = map_df[lon_col]
-                    
-                    # Warna berdasarkan status
-                    color_map = {
-                        'ODP Tersedia': [0, 255, 0, 160],    # Hijau
-                        'Potensi PT2/PT3': [255, 165, 0, 160], # Orange
-                        'Tidak Ada ODP': [255, 0, 0, 160]     # Merah
-                    }
-                    map_df['color'] = map_df['STATUS_REKOMENDASI'].map(color_map)
-                    
-                    # Buat peta dengan PyDeck
-                    st.pydeck_chart(pdk.Deck(
-                        map_style='mapbox://styles/mapbox/light-v9',
-                        initial_view_state=pdk.ViewState(
-                            latitude=map_df['lat'].mean(),
-                            longitude=map_df['lon'].mean(),
-                            zoom=11,
-                            pitch=50,
-                        ),
-                        layers=[
-                            pdk.Layer(
-                                'ScatterplotLayer',
-                                data=map_df,
-                                get_position='[lon, lat]',
-                                get_color='color',
-                                get_radius=50,
-                                pickable=True
-                            ),
-                            pdk.Layer(
-                                'ScatterplotLayer',
-                                data=odp_df[odp_df['AVAI'] >= 6],
-                                get_position='[LONGITUDE, LATITUDE]',
-                                get_color='[0, 0, 255, 160]',
-                                get_radius=100,
-                                pickable=True
-                            )
-                        ],
-                        tooltip={
-                            "html": "<b>Status:</b> {STATUS_REKOMENDASI}<br/>"
-                                   "<b>Keterangan:</b> {KETERANGAN}<br/>"
-                                   "<b>ODP Terdekat:</b> {ODP_TERDEKAT}<br/>"
-                                   "<b>Jarak:</b> {JARAK_METER} meter",
-                            "style": {
-                                "backgroundColor": "steelblue",
-                                "color": "white"
-                            }
-                        }
-                    ))
-                except Exception as e:
-                    st.warning(f"Tidak dapat menampilkan peta interaktif: {str(e)}")
-                
                 # Download hasil
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     final_df.to_excel(writer, index=False, sheet_name='Rekomendasi')
-                    
-                    # Buat worksheet tambahan dengan statistik
                     stat_df.to_excel(writer, index=False, sheet_name='Statistik')
-                    
-                    # Buat worksheet dengan data ODP
                     odp_df.to_excel(writer, index=False, sheet_name='Data_ODP')
                 
                 st.download_button(
                     label="Unduh Hasil Lengkap (Excel)",
                     data=output.getvalue(),
-                    file_name='rekomendasi_odp_dengan_flagging.xlsx',
+                    file_name='rekomendasi_odp.xlsx',
                     mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                 )
 
