@@ -6,13 +6,11 @@ from io import BytesIO
 st.set_page_config(page_title="Rekomendasi ODP Lengkap", layout="wide")
 
 def calculate_recommendation(row, odp_df, lat_col, lon_col, sto_col=None, min_avail=6, max_distance=200):
-    """Menghitung rekomendasi ODP dengan detail lengkap"""
     pelanggan_coord = (row[lat_col], row[lon_col])
     best_odp = None
     closest_odp = None
     min_distance = float('inf')
 
-    # Filter ODP berdasarkan STO jika tersedia
     if sto_col is not None and 'STO' in odp_df.columns:
         filtered_odp = odp_df[odp_df['STO'] == row[sto_col]]
     else:
@@ -53,7 +51,7 @@ def calculate_recommendation(row, odp_df, lat_col, lon_col, sto_col=None, min_av
 def main():
     st.title("📊 Rekomendasi ODP Lengkap")
 
-    # Upload data ODP
+    # Upload Data ODP
     with st.expander("1. Upload Data ODP", expanded=True):
         odp_file = st.file_uploader("Pilih file Excel/CSV data ODP", type=['xlsx', 'xls', 'csv'], key="odp_uploader")
         odp_df = None
@@ -79,7 +77,7 @@ def main():
             except Exception as e:
                 st.error(f"Error membaca data ODP: {str(e)}")
 
-    # Upload data pelanggan
+    # Upload Data Pelanggan
     with st.expander("2. Upload Data Pelanggan", expanded=True):
         pelanggan_file = st.file_uploader("Pilih file Excel/CSV data pelanggan", type=['xlsx', 'xls', 'csv'], key="pelanggan_uploader")
         pelanggan_df = None
@@ -104,7 +102,7 @@ def main():
                 with col3:
                     lat_col = st.selectbox("Pilih kolom Latitude", cols, index=cols.index('Latitude') if 'Latitude' in cols else 0)
                 with col4:
-                    lon_col = st.selectbox("Pilih kolom Longitude", cols, index=cols.index('Longitude') if 'Longitude' in cols else 1 if len(cols) > 1 else 0)
+                    lon_col = st.selectbox("Pilih kolom Longitude", cols, index=cols.index('Longitude') if 'Longitude' in cols else 1)
 
                 pelanggan_df[lat_col] = pd.to_numeric(pelanggan_df[lat_col], errors='coerce')
                 pelanggan_df[lon_col] = pd.to_numeric(pelanggan_df[lon_col], errors='coerce')
@@ -116,7 +114,7 @@ def main():
             except Exception as e:
                 st.error(f"Error membaca data pelanggan: {str(e)}")
 
-    # Proses rekomendasi
+    # Proses Rekomendasi
     if odp_df is not None and pelanggan_df is not None:
         st.subheader("3. Hasil Rekomendasi")
 
@@ -127,12 +125,16 @@ def main():
                     max_distance = st.session_state.get('max_distance', 200)
                     sto_column = None if sto_col == '-' else sto_col
 
-                    results = pelanggan_df.apply(
-                        lambda row: calculate_recommendation(
-                            row, odp_df, lat_col, lon_col, sto_column, min_avail, max_distance
-                        ),
-                        axis=1
-                    )
+                    results_list = []
+                    progress_bar = st.progress(0)
+                    total = len(pelanggan_df)
+
+                    for i, (_, row) in enumerate(pelanggan_df.iterrows()):
+                        result = calculate_recommendation(row, odp_df, lat_col, lon_col, sto_column, min_avail, max_distance)
+                        results_list.append(result)
+                        progress_bar.progress((i + 1) / total)
+
+                    results = pd.DataFrame(results_list)
 
                     base_df = pelanggan_df[[nama_kolom]]
                     if sto_col != '-':
