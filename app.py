@@ -3,7 +3,7 @@ import pandas as pd
 from geopy.distance import geodesic
 from io import BytesIO
 
-st.set_page_config(page_title="Rekomendasi ODP Sederhana", layout="wide")
+st.set_page_config(page_title="Rekomendasi ODP Fleksibel", layout="wide")
 
 def calculate_distance_and_flag(row, odp_df, lat_col, lon_col):
     """Menghitung jarak terdekat dan menentukan flagging"""
@@ -21,7 +21,7 @@ def calculate_distance_and_flag(row, odp_df, lat_col, lon_col):
         if distance <= 200:
             has_odp_in_range = True
             # Prioritaskan ODP dengan avail >= 6
-            if odp_row['AVAI'] >= 3 and distance < min_distance:
+            if odp_row['AVAI'] >= 6 and distance < min_distance:
                 min_distance = distance
                 best_odp = odp_row
     
@@ -48,11 +48,49 @@ def calculate_distance_and_flag(row, odp_df, lat_col, lon_col):
     
     return pd.Series(result)
 
+def detect_coordinate_columns(df, lat_names=['latitude', 'lat'], lon_names=['longitude', 'lon']):
+    """Mendeteksi kolom latitude dan longitude secara otomatis"""
+    lat_col = None
+    lon_col = None
+    
+    # Cari kolom latitude
+    for name in lat_names:
+        if name in df.columns:
+            lat_col = name
+            break
+    
+    # Cari kolom longitude
+    for name in lon_names:
+        if name in df.columns:
+            lon_col = name
+            break
+    
+    # Jika tidak ditemukan, coba cari berdasarkan pola
+    if lat_col is None:
+        for col in df.columns:
+            if 'lat' in col.lower():
+                lat_col = col
+                break
+    
+    if lon_col is None:
+        for col in df.columns:
+            if 'lon' in col.lower() or 'lng' in col.lower():
+                lon_col = col
+                break
+    
+    # Default ke kolom pertama dan kedua jika tidak ditemukan
+    if lat_col is None:
+        lat_col = df.columns[0]
+    if lon_col is None:
+        lon_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]
+    
+    return lat_col, lon_col
+
 def main():
-    st.title("Rekomendasi ODP Tanpa Peta")
+    st.title("Rekomendasi ODP - Fleksibel Kolom Koordinat")
     st.write("""
-    Aplikasi ini menganalisis data pelanggan dan ODP untuk memberikan rekomendasi ODP terdekat 
-    dalam radius 200 meter dengan avail minimal 6, serta menandai area yang membutuhkan PT2/PT3.
+    Aplikasi ini dapat menangani berbagai nama kolom untuk latitude dan longitude pada data pelanggan.
+    Sistem akan mencoba mendeteksi kolom koordinat secara otomatis.
     """)
     
     # Upload data ODP
@@ -77,25 +115,13 @@ def main():
                 odp_df = None
             else:
                 st.success(f"Data ODP berhasil dibaca! {len(odp_df)} ODP ditemukan.")
-                
-                # Tampilkan statistik ODP
-                st.write("**Statistik ODP:**")
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total ODP", len(odp_df))
-                with col2:
-                    st.metric("ODP dengan avail ≥6", len(odp_df[odp_df['AVAI'] >= 3]))
-                with col3:
-                    st.metric("ODP dengan avail <6", len(odp_df[odp_df['AVAI'] < 3]))
-                
-                # Tampilkan preview data
                 st.dataframe(odp_df[required_cols].head())
         except Exception as e:
             st.error(f"Error membaca data ODP: {str(e)}")
     
     # Upload data pelanggan
     st.subheader("2. Upload Data Pelanggan")
-    st.write("Pastikan file mengandung kolom latitude dan longitude pelanggan")
+    st.write("File harus mengandung kolom latitude dan longitude (nama kolom fleksibel)")
     pelanggan_file = st.file_uploader("Pilih file Excel/CSV data pelanggan", type=['xlsx', 'xls', 'csv'], key="pelanggan_uploader")
     
     pelanggan_df = None
@@ -108,21 +134,26 @@ def main():
             
             st.success(f"Data pelanggan berhasil dibaca! {len(pelanggan_df)} pelanggan ditemukan.")
             
-            # Pilih kolom koordinat
-            cols = pelanggan_df.columns.tolist()
+            # Deteksi kolom koordinat otomatis
+            lat_col, lon_col = detect_coordinate_columns(pelanggan_df)
+            
+            st.write(f"Kolom terdeteksi: Latitude = '{lat_col}', Longitude = '{lon_col}'")
+            
+            # Konfirmasi kolom
             col1, col2 = st.columns(2)
             with col1:
-                lat_col = st.selectbox("Pilih kolom Latitude pelanggan", cols, 
-                                      index=cols.index('latitude') if 'latitude' in cols else 0)
+                lat_col = st.selectbox("Konfirmasi kolom Latitude", pelanggan_df.columns, 
+                                     index=list(pelanggan_df.columns).index(lat_col))
             with col2:
-                lon_col = st.selectbox("Pilih kolom Longitude pelanggan", cols, 
-                                      index=cols.index('longitude') if 'longitude' in cols else 1 if len(cols) > 1 else 0)
+                lon_col = st.selectbox("Konfirmasi kolom Longitude", pelanggan_df.columns, 
+                                     index=list(pelanggan_df.columns).index(lon_col))
             
             # Validasi data koordinat
             pelanggan_df[lat_col] = pd.to_numeric(pelanggan_df[lat_col], errors='coerce')
             pelanggan_df[lon_col] = pd.to_numeric(pelanggan_df[lon_col], errors='coerce')
             pelanggan_df = pelanggan_df.dropna(subset=[lat_col, lon_col])
             
+            st.write("**Preview Data Pelanggan:**")
             st.dataframe(pelanggan_df.head())
         except Exception as e:
             st.error(f"Error membaca data pelanggan: {str(e)}")
@@ -162,6 +193,7 @@ def main():
                     st.metric("Tidak Ada ODP", stat_df[stat_df['Kategori'] == 'Tidak Ada ODP']['Jumlah'].values[0])
                 
                 # Tampilkan hasil
+                st.write("**Detail Rekomendasi:**")
                 st.dataframe(final_df)
                 
                 # Download hasil
@@ -174,7 +206,7 @@ def main():
                 st.download_button(
                     label="Unduh Hasil Lengkap (Excel)",
                     data=output.getvalue(),
-                    file_name='rekomendasi_odp.xlsx',
+                    file_name='rekomendasi_odp_fleksibel.xlsx',
                     mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                 )
 
