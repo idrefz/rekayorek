@@ -1,187 +1,139 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from geopy.distance import geodesic
-from io import BytesIO
+import io
 
-st.set_page_config(page_title="Rekomendasi ODP Lengkap", layout="wide")
+st.set_page_config(layout="wide")
+st.title("ODP Recommendation System")
 
-def calculate_recommendation(row, odp_df, lat_col, lon_col, sto_col=None, min_avail=6, max_distance=200):
+def calculate_recommendation(row, odp_df, lat_col, lon_col, sto_column, min_avail, max_distance):
     pelanggan_coord = (row[lat_col], row[lon_col])
-    best_odp = None
-    closest_odp = None
-    min_distance = float('inf')
+    if pd.isnull(pelanggan_coord[0]) or pd.isnull(pelanggan_coord[1]):
+        return {
+            'Nama ODP Rekomendasi': None,
+            'Jarak (meter)': None,
+            'AVAI': None,
+            'USED': None,
+            'IDLE': None,
+            'RSV': None,
+            'RSK': None,
+            'IS_TOTAL': None,
+            'Latitude ODP': None,
+            'Longitude ODP': None,
+            'Status': 'Koordinat pelanggan tidak valid',
+            'ODP Terdekat (Jika tidak memenuhi kriteria)': None,
+            'Jarak ODP Terdekat (meter)': None
+        }
 
-    if sto_col is not None and 'STO' in odp_df.columns:
-        filtered_odp = odp_df[odp_df['STO'] == row[sto_col]]
+    if sto_column and sto_column in row:
+        filtered_odp = odp_df[odp_df['STO'] == row[sto_column]]
     else:
         filtered_odp = odp_df
 
-    for _, odp_row in filtered_odp.iterrows():
-        odp_coord = (odp_row['LATITUDE'], odp_row['LONGITUDE'])
-        distance = geodesic(pelanggan_coord, odp_coord).meters
+    filtered_odp = filtered_odp.copy()
+    filtered_odp['distance'] = filtered_odp.apply(
+        lambda x: geodesic(pelanggan_coord, (x['LATITUDE'], x['LONGITUDE'])).meters, axis=1)
+    
+    nearby_odp = filtered_odp[filtered_odp['distance'] <= max_distance]
+    eligible_odp = nearby_odp[nearby_odp['AVAI'] - nearby_odp['USED'] >= min_avail]
 
-        if distance < min_distance:
-            min_distance = distance
-            closest_odp = odp_row
+    best_odp = eligible_odp.nsmallest(1, 'distance').squeeze() if not eligible_odp.empty else None
+    closest_odp = filtered_odp.nsmallest(1, 'distance').squeeze() if not filtered_odp.empty else None
 
-        if distance <= max_distance and odp_row['AVAI'] >= min_avail:
-            if best_odp is None or distance < min_distance:
-                best_odp = odp_row
-                min_distance = distance
+    rsv = None
+    rsk = None
+    is_total = None
 
-    rsv = best_odp['RSV'] if best_odp is not None and 'RSV' in best_odp else None
-    rsk = best_odp['RSK'] if best_odp is not None and 'RSK' in best_odp else None
-    is_total = best_odp['IS_TOTAL'] if best_odp is not None and 'IS_TOTAL' in best_odp else None
+    if best_odp is not None:
+        rsv = best_odp.get('RSV')
+        rsk = best_odp.get('RSK')
+        is_total = best_odp.get('IS_TOTAL')
+    elif closest_odp is not None:
+        rsv = closest_odp.get('RSV')
+        rsk = closest_odp.get('RSK')
+        is_total = closest_odp.get('IS_TOTAL')
 
     result = {
         'Nama ODP Rekomendasi': best_odp['ODP_NAME'] if best_odp is not None else closest_odp['ODP_NAME'] if closest_odp is not None else None,
-        'Jarak (meter)': round(min_distance, 2) if best_odp is not None else round(geodesic(pelanggan_coord, (closest_odp['LATITUDE'], closest_odp['LONGITUDE'])).meters, 2) if closest_odp is not None else None,
+        'Jarak (meter)': round(min(filtered_odp['distance']), 2) if best_odp is not None or closest_odp is not None else None,
         'AVAI': best_odp['AVAI'] if best_odp is not None else closest_odp['AVAI'] if closest_odp is not None else None,
         'USED': best_odp['USED'] if best_odp is not None else closest_odp['USED'] if closest_odp is not None else None,
-        'IDLE': best_odp['AVAI'] - best_odp['USED'] if best_odp is not None and 'AVAI' in best_odp and 'USED' in best_odp else None,
+        'IDLE': best_odp['AVAI'] - best_odp['USED'] if best_odp is not None else closest_odp['AVAI'] - closest_odp['USED'] if closest_odp is not None else None,
         'RSV': rsv,
         'RSK': rsk,
         'IS_TOTAL': is_total,
+        'Latitude ODP': best_odp['LATITUDE'] if best_odp is not None else closest_odp['LATITUDE'] if closest_odp is not None else None,
+        'Longitude ODP': best_odp['LONGITUDE'] if best_odp is not None else closest_odp['LONGITUDE'] if closest_odp is not None else None,
         'Status': 'Ready PT1' if best_odp is not None else 'Potensi PT2/PT3',
         'ODP Terdekat (Jika tidak memenuhi kriteria)': closest_odp['ODP_NAME'] if best_odp is None and closest_odp is not None else None,
         'Jarak ODP Terdekat (meter)': round(geodesic(pelanggan_coord, (closest_odp['LATITUDE'], closest_odp['LONGITUDE'])).meters, 2) if best_odp is None and closest_odp is not None else None
     }
-    return pd.Series(result)
 
-def main():
-    st.title("📊 Rekomendasi ODP Lengkap")
+    return result
 
-    # Upload Data ODP
-    with st.expander("1. Upload Data ODP", expanded=True):
-        odp_file = st.file_uploader("Pilih file Excel/CSV data ODP", type=['xlsx', 'xls', 'csv'], key="odp_uploader")
-        odp_df = None
+uploaded_odp = st.file_uploader("Upload File ODP (.xlsx or .csv)", type=["xlsx", "csv"])
+uploaded_pelanggan = st.file_uploader("Upload File Pelanggan (.xlsx or .csv)", type=["xlsx", "csv"])
 
-        if odp_file is not None:
-            try:
-                if odp_file.name.endswith('.csv'):
-                    odp_df = pd.read_csv(odp_file)
-                else:
-                    odp_df = pd.read_excel(odp_file)
+if uploaded_odp and uploaded_pelanggan:
+    if uploaded_odp.name.endswith('xlsx'):
+        odp_df = pd.read_excel(uploaded_odp)
+    else:
+        odp_df = pd.read_csv(uploaded_odp)
 
-                required_cols = ['ODP_NAME', 'LATITUDE', 'LONGITUDE', 'AVAI', 'USED']
-                missing_cols = [col for col in required_cols if col not in odp_df.columns]
+    if uploaded_pelanggan.name.endswith('xlsx'):
+        pelanggan_df = pd.read_excel(uploaded_pelanggan)
+    else:
+        pelanggan_df = pd.read_csv(uploaded_pelanggan)
 
-                if missing_cols:
-                    st.error(f"Kolom penting tidak ditemukan: {', '.join(missing_cols)}")
-                else:
-                    st.success(f"Data ODP berhasil dibaca! {len(odp_df)} ODP ditemukan.")
-                    min_avail = st.slider("Filter ODP dengan Avail minimal:", 0, 16, 6, key="min_avail")
-                    max_distance = st.slider("Jarak maksimal (meter):", 50, 500, 200, key="max_distance")
-                    if st.checkbox("Tampilkan preview data ODP"):
-                        st.dataframe(odp_df.head())
-            except Exception as e:
-                st.error(f"Error membaca data ODP: {str(e)}")
+    lat_col = st.selectbox("Pilih kolom Latitude pelanggan", pelanggan_df.columns)
+    lon_col = st.selectbox("Pilih kolom Longitude pelanggan", pelanggan_df.columns)
+    nama_kolom = st.selectbox("Pilih kolom Nama pelanggan", pelanggan_df.columns)
+    sto_col = st.selectbox("Pilih kolom STO pelanggan (opsional)", ['-'] + list(pelanggan_df.columns))
 
-    # Upload Data Pelanggan
-    with st.expander("2. Upload Data Pelanggan", expanded=True):
-        pelanggan_file = st.file_uploader("Pilih file Excel/CSV data pelanggan", type=['xlsx', 'xls', 'csv'], key="pelanggan_uploader")
-        pelanggan_df = None
+    min_avail = st.slider("Minimum AVAI - USED", 0, 8, 2)
+    max_distance = st.slider("Jarak maksimum (meter)", 100, 500, 300)
 
-        if pelanggan_file is not None and odp_df is not None:
-            try:
-                if pelanggan_file.name.endswith('.csv'):
-                    pelanggan_df = pd.read_csv(pelanggan_file)
-                else:
-                    pelanggan_df = pd.read_excel(pelanggan_file)
+    if st.button("Proses Rekomendasi"):
+        with st.spinner("Memproses data pelanggan..."):
+            results_list = []
+            progress_bar = st.progress(0)
+            progress_text = st.empty()
+            total = len(pelanggan_df)
 
-                st.success(f"Data pelanggan berhasil dibaca! {len(pelanggan_df)} pelanggan ditemukan.")
-                cols = pelanggan_df.columns.tolist()
+            for i, (_, row) in enumerate(pelanggan_df.iterrows()):
+                result = calculate_recommendation(
+                    row, odp_df, lat_col, lon_col,
+                    sto_col if sto_col != '-' else None,
+                    min_avail, max_distance
+                )
+                results_list.append(result)
+                percent_complete = (i + 1) / total
+                progress_bar.progress(percent_complete)
+                progress_text.text(f"Progres: {i+1}/{total} pelanggan diproses ({percent_complete*100:.1f}%)")
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    nama_kolom = st.selectbox("Pilih kolom Nama Koperasi/Pelanggan", cols, index=cols.index('Nama Koperasi') if 'Nama Koperasi' in cols else 0)
-                with col2:
-                    sto_col = st.selectbox("Pilih kolom STO (opsional)", ['-'] + cols, index=0)
+            results = pd.DataFrame(results_list)
 
-                col3, col4 = st.columns(2)
-                with col3:
-                    lat_col = st.selectbox("Pilih kolom Latitude", cols, index=cols.index('Latitude') if 'Latitude' in cols else 0)
-                with col4:
-                    lon_col = st.selectbox("Pilih kolom Longitude", cols, index=cols.index('Longitude') if 'Longitude' in cols else 1)
+        # Gabungkan data hasil ke pelanggan_df
+        if sto_col != '-':
+            base_df = pelanggan_df[[nama_kolom, sto_col]]
+        else:
+            base_df = pelanggan_df[[nama_kolom]]
 
-                pelanggan_df[lat_col] = pd.to_numeric(pelanggan_df[lat_col], errors='coerce')
-                pelanggan_df[lon_col] = pd.to_numeric(pelanggan_df[lon_col], errors='coerce')
-                pelanggan_df = pelanggan_df.dropna(subset=[lat_col, lon_col])
+        final_df = pd.concat([base_df.reset_index(drop=True), results.reset_index(drop=True)], axis=1)
 
-                if st.checkbox("Tampilkan preview data pelanggan"):
-                    st.dataframe(pelanggan_df.head())
+        st.success("Rekomendasi selesai diproses!")
 
-            except Exception as e:
-                st.error(f"Error membaca data pelanggan: {str(e)}")
+        st.dataframe(final_df)
 
-    # Proses Rekomendasi
-    if odp_df is not None and pelanggan_df is not None:
-        st.subheader("3. Hasil Rekomendasi")
+        # Tombol download hasil
+        towrite = io.BytesIO()
+        downloaded = final_df.to_excel(towrite, index=False, sheet_name='Rekomendasi')
+        towrite.seek(0)
 
-        if st.button("🚀 Mulai Proses Rekomendasi", type="primary"):
-            with st.spinner('Memproses data...'):
-                try:
-                    min_avail = st.session_state.get('min_avail', 6)
-                    max_distance = st.session_state.get('max_distance', 200)
-                    sto_column = None if sto_col == '-' else sto_col
-
-                    results_list = []
-                    progress_bar = st.progress(0)
-                    total = len(pelanggan_df)
-
-                    for i, (_, row) in enumerate(pelanggan_df.iterrows()):
-                        result = calculate_recommendation(row, odp_df, lat_col, lon_col, sto_column, min_avail, max_distance)
-                        results_list.append(result)
-                        progress_bar.progress((i + 1) / total)
-
-                    results = pd.DataFrame(results_list)
-
-                    base_df = pelanggan_df[[nama_kolom]]
-                    if sto_col != '-':
-                        base_df = pelanggan_df[[nama_kolom, sto_col]]
-
-                    final_df = pd.concat([base_df.reset_index(drop=True), results.reset_index(drop=True)], axis=1)
-
-                    ready_pt1 = final_df[final_df['Status'] == 'Ready PT1']
-                    potensi_pt2 = final_df[final_df['Status'] == 'Potensi PT2/PT3']
-
-                    st.success("✅ Proses selesai!")
-
-                    st.subheader("📊 Statistik Rekomendasi")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Ready PT1", len(ready_pt1))
-                    with col2:
-                        st.metric("Potensi PT2/PT3", len(potensi_pt2))
-
-                    st.subheader("📋 Detail Rekomendasi")
-                    st.dataframe(final_df)
-
-                    st.subheader("💾 Download Hasil")
-                    output = BytesIO()
-                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                        final_df.to_excel(writer, index=False, sheet_name='Rekomendasi')
-
-                        stats = pd.DataFrame({
-                            'Kategori': ['Ready PT1', 'Potensi PT2/PT3'],
-                            'Jumlah': [len(ready_pt1), len(potensi_pt2)],
-                            'Persentase': [
-                                f"{len(ready_pt1)/len(final_df)*100:.1f}%",
-                                f"{len(potensi_pt2)/len(final_df)*100:.1f}%"
-                            ]
-                        })
-                        stats.to_excel(writer, index=False, sheet_name='Statistik')
-
-                    st.download_button(
-                        label="Unduh Hasil Lengkap (Excel)",
-                        data=output.getvalue(),
-                        file_name='rekomendasi_odp_lengkap.xlsx',
-                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                        help="File Excel berisi 2 sheet: Rekomendasi dan Statistik"
-                    )
-
-                except Exception as e:
-                    st.error(f"Terjadi kesalahan saat memproses: {str(e)}")
-
-if __name__ == "__main__":
-    main()
+        st.download_button(
+            label="📥 Download Hasil Rekomendasi",
+            data=towrite,
+            file_name="hasil_rekomendasi_odp.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
