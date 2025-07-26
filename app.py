@@ -174,18 +174,15 @@ def main():
                 potensi_pt2 = final_df[final_df['STATUS_REKOMENDASI'] == 'Potensi PT2/PT3']
                 tidak_ada = final_df[final_df['STATUS_REKOMENDASI'] == 'Tidak Ada ODP']
                 
+                # Hitung persentase
+                pct_tersedia = (len(odp_tersedia) / total_pelanggan * 100) if total_pelanggan > 0 else 0
+                pct_pt2 = (len(potensi_pt2) / total_pelanggan * 100) if total_pelanggan > 0 else 0
+                pct_tidak_ada = (len(tidak_ada) / total_pelanggan * 100) if total_pelanggan > 0 else 0
+                
                 stat_df = pd.DataFrame({
                     'Kategori': ['ODP Tersedia', 'Potensi PT2/PT3', 'Tidak Ada ODP'],
-                    'Jumlah': [
-                        len(odp_tersedia),
-                        len(potensi_pt2),
-                        len(tidak_ada)
-                    ],
-                    'Persentase': [
-                        f"{(len(odp_tersedia) / total_pelanggan * 100:.1f}%",
-                        f"{(len(potensi_pt2) / total_pelanggan * 100:.1f}%",
-                        f"{(len(tidak_ada) / total_pelanggan * 100:.1f}%"
-                    ],
+                    'Jumlah': [len(odp_tersedia), len(potensi_pt2), len(tidak_ada)],
+                    'Persentase': [f"{pct_tersedia:.1f}%", f"{pct_pt2:.1f}%", f"{pct_tidak_ada:.1f}%"],
                     'Contoh ODP': [
                         ", ".join(odp_tersedia['ODP_TERDEKAT'].dropna().unique()[:3]) if len(odp_tersedia) > 0 else "-",
                         "-",
@@ -203,16 +200,16 @@ def main():
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("ODP Tersedia", 
-                            stat_df.loc[0, 'Jumlah'],
-                            stat_df.loc[0, 'Persentase'])
+                            len(odp_tersedia),
+                            f"{pct_tersedia:.1f}%")
                 with col2:
                     st.metric("Potensi PT2/PT3", 
-                            stat_df.loc[1, 'Jumlah'],
-                            stat_df.loc[1, 'Persentase'])
+                            len(potensi_pt2),
+                            f"{pct_pt2:.1f}%")
                 with col3:
                     st.metric("Tidak Ada ODP", 
-                            stat_df.loc[2, 'Jumlah'],
-                            stat_df.loc[2, 'Persentase'])
+                            len(tidak_ada),
+                            f"{pct_tidak_ada:.1f}%")
                 
                 st.write("**Detail Statistik:**")
                 st.dataframe(stat_df)
