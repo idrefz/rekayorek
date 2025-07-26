@@ -385,11 +385,17 @@ def main():
                         axis=1
                     )
                     
-                    # Gabungkan hasil dengan data pelanggan
-                    final_df = pd.concat([
-                        pelanggan_df[[nama_kolom, sto_col] if sto_col != '-' else pelanggan_df[[nama_kolom]], 
-                        results
-                    ], axis=1)
+                  # Gabungkan hasil dengan data pelanggan
+    if sto_col != '-':
+    final_df = pd.concat([
+        pelanggan_df[[nama_kolom, sto_col]], 
+        results
+    ], axis=1)
+else:
+    final_df = pd.concat([
+        pelanggan_df[[nama_kolom]], 
+        results
+    ], axis=1)
                     
                     # Hitung statistik
                     ready_pt1 = final_df[final_df['Status'] == 'Ready PT1']
