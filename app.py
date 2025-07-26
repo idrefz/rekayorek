@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from geopy.distance import geodesic
 from io import BytesIO
 import pydeck as pdk
@@ -137,6 +136,8 @@ def main():
                     ))
                 except Exception as e:
                     st.warning(f"Tidak dapat menampilkan peta ODP: {str(e)}")
+        except Exception as e:
+            st.error(f"Error membaca data ODP: {str(e)}")
     
     # Upload data pelanggan
     st.subheader("2. Upload Data Pelanggan")
@@ -179,6 +180,8 @@ def main():
                 }))
             except:
                 st.warning("Tidak dapat menampilkan peta pelanggan")
+        except Exception as e:
+            st.error(f"Error membaca data pelanggan: {str(e)}")
     
     # Proses rekomendasi
     if odp_df is not None and pelanggan_df is not None:
