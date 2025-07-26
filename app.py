@@ -84,9 +84,9 @@ def main():
                 with col1:
                     st.metric("Total ODP", len(odp_df))
                 with col2:
-                    st.metric("ODP dengan avail ≥6", len(odp_df[odp_df['AVAI'] >= 6]))
+                    st.metric("ODP dengan avail ≥6", len(odp_df[odp_df['AVAI'] >= 3]))
                 with col3:
-                    st.metric("ODP dengan avail <6", len(odp_df[odp_df['AVAI'] < 6]))
+                    st.metric("ODP dengan avail <6", len(odp_df[odp_df['AVAI'] < 3]))
                 
                 # Tampilkan preview data
                 st.dataframe(odp_df[required_cols].head())
