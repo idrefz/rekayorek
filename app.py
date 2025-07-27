@@ -60,25 +60,59 @@ def calculate_recommendation(row, odp_df, lat_col, lon_col, sto_column, min_avai
     best_odp = eligible_odp.nsmallest(1, 'distance').squeeze() if not eligible_odp.empty else None
     closest_odp = filtered_odp.nsmallest(1, 'distance').squeeze() if not filtered_odp.empty else None
 
-    # Prepare result
-    result = {
-        'Nama ODP Rekomendasi': best_odp['ODP_NAME'] if best_odp is not None else None,
-        'Jarak (meter)': round(best_odp['distance'], 2) if best_odp is not None else None,
-        'AVAI': best_odp['AVAI'] if best_odp is not None else None,
-        'USED': best_odp['USED'] if best_odp is not None else None,
-        'IDLE': (best_odp['AVAI'] - best_odp['USED']) if best_odp is not None else None,
-        'RSV': best_odp.get('RSV') if best_odp is not None else None,
-        'RSK': best_odp.get('RSK') if best_odp is not None else None,
-        'IS_TOTAL': best_odp.get('IS_TOTAL') if best_odp is not None else None,
-        'Latitude ODP': best_odp['LATITUDE'] if best_odp is not None else None,
-        'Longitude ODP': best_odp['LONGITUDE'] if best_odp is not None else None,
-        'Status': 'Ready PT1' if best_odp is not None else 'Potensi PT2/PT3',
-        'ODP Terdekat (Jika tidak memenuhi kriteria)': closest_odp['ODP_NAME'] if best_odp is None and closest_odp is not None else None,
-        'Jarak ODP Terdekat (meter)': round(closest_odp['distance'], 2) if best_odp is None and closest_odp is not None else None,
-        # Tambahkan latitude dan longitude pelanggan
-        'Latitude Pelanggan': row[lat_col],
-        'Longitude Pelanggan': row[lon_col]
-    }
+    # Prepare result - modified to show closest ODP details for PT2/PT3 cases
+    if best_odp is not None:
+        result = {
+            'Nama ODP Rekomendasi': best_odp['ODP_NAME'],
+            'Jarak (meter)': round(best_odp['distance'], 2),
+            'AVAI': best_odp['AVAI'],
+            'USED': best_odp['USED'],
+            'IDLE': best_odp['AVAI'] - best_odp['USED'],
+            'RSV': best_odp.get('RSV'),
+            'RSK': best_odp.get('RSK'),
+            'IS_TOTAL': best_odp.get('IS_TOTAL'),
+            'Latitude ODP': best_odp['LATITUDE'],
+            'Longitude ODP': best_odp['LONGITUDE'],
+            'Status': 'Ready PT1',
+            'ODP Terdekat (Jika tidak memenuhi kriteria)': None,
+            'Jarak ODP Terdekat (meter)': None
+        }
+    elif closest_odp is not None:
+        result = {
+            'Nama ODP Rekomendasi': None,
+            'Jarak (meter)': None,
+            'AVAI': closest_odp['AVAI'],
+            'USED': closest_odp['USED'],
+            'IDLE': closest_odp['AVAI'] - closest_odp['USED'],
+            'RSV': closest_odp.get('RSV'),
+            'RSK': closest_odp.get('RSK'),
+            'IS_TOTAL': closest_odp.get('IS_TOTAL'),
+            'Latitude ODP': closest_odp['LATITUDE'],
+            'Longitude ODP': closest_odp['LONGITUDE'],
+            'Status': 'Potensi PT2/PT3',
+            'ODP Terdekat (Jika tidak memenuhi kriteria)': closest_odp['ODP_NAME'],
+            'Jarak ODP Terdekat (meter)': round(closest_odp['distance'], 2)
+        }
+    else:
+        result = {
+            'Nama ODP Rekomendasi': None,
+            'Jarak (meter)': None,
+            'AVAI': None,
+            'USED': None,
+            'IDLE': None,
+            'RSV': None,
+            'RSK': None,
+            'IS_TOTAL': None,
+            'Latitude ODP': None,
+            'Longitude ODP': None,
+            'Status': 'Tidak ada ODP yang ditemukan',
+            'ODP Terdekat (Jika tidak memenuhi kriteria)': None,
+            'Jarak ODP Terdekat (meter)': None
+        }
+
+    # Tambahkan latitude dan longitude pelanggan
+    result['Latitude Pelanggan'] = row[lat_col]
+    result['Longitude Pelanggan'] = row[lon_col]
 
     return result
 
